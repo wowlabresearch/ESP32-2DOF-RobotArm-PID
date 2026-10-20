@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unconv. Robot 2-DOF Arm</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+<style>
+  :root { --bg:#141418; --panel:#1d1d23; --line:#2e2e38; --text:#ddd; --dim:#8a8a96; --accent:#4cf; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+               font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { display:flex; }
+  #panel { width:360px; flex:none; height:100%; overflow-y:auto; background:var(--panel);
+           border-right:1px solid var(--line); padding:10px 12px 20px; }
+  #sketch-holder { position:relative; flex:1; min-width:0; height:100%; overflow:hidden; }
+  #sketch-holder canvas { display:block; }
+  h1 { font-size:15px; margin:2px 0 8px; }
+  fieldset { border:1px solid var(--line); border-radius:6px; margin:0 0 10px; padding:6px 8px 8px; }
+  legend { color:var(--accent); padding:0 4px; font-weight:600; }
+  .row { display:grid; grid-template-columns:62px 1fr 44px; align-items:center; gap:6px; margin:3px 0; }
+  .row span:last-child { text-align:right; font-variant-numeric:tabular-nums; color:var(--dim); }
+  .row2 { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:4px 0; }
+  .sub { color:var(--dim); font-size:11px; margin:2px 0 4px; }
+  .gains { display:grid; grid-template-columns:1fr; gap:6px; }
+  .gains > div { border-top:1px solid var(--line); padding-top:4px; }
+  .gains .row { grid-template-columns:28px 1fr 44px; }
+  select, input[type=number], button { background:#2a2a33; color:var(--text); border:1px solid #3a3a46;
+                                       border-radius:4px; padding:3px 6px; font:inherit; }
+  input[type=number] { width:80px; }
+  input[type=range] { width:100%; }
+  input:disabled { opacity:.35; }
+  button { cursor:pointer; }
+  button:hover:not(:disabled) { border-color:var(--accent); }
+  button:disabled { opacity:.4; cursor:default; }
+  #ctrlDesc { color:#bbb; font-size:12px; margin-top:6px; }
+  .mono { font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<aside id="panel">
+  <h1>Unconv. Robot 2-DOF Robot Arm</h1>
+
+  <fieldset>
+    <legend>Serial</legend>
+    <div class="row2">
+      <button id="btnSerial">Connect</button>
+      <button id="btnSerialClose" disabled>Disconnect</button>
+      <label><input type="checkbox" id="followSim" checked> Follow Sim</label>
+    </div>
+    <div class="sub" id="serialStatus">Not connected</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Mode / Controller</legend>
+    <div class="row2">
+      <select id="mode">
+        <option value="ik" selected>IK Target</option>
+        <option value="joint">Joint Target</option>
+      </select>
+      <select id="elbow">
+        <option value="up" selected>Elbow up</option>
+        <option value="down">Elbow down</option>
+      </select>
+    </div>
+    <div class="row2">
+      <select id="ctrl">
+        <option value="pid" selected>IK + Joint PID</option>
+        <option value="imp">Impedance (no F/T)</option>
+        <option value="impF">Impedance + F/T (M shaping)</option>
+        <option value="adm">Admittance (pos. servo + F/T)</option>
+      </select>
+    </div>
+    <div id="ctrlDesc"></div>
+  </fieldset>
+
+  <fieldset id="jointTargets">
+    <legend>Joint targets</legend>
+    <div class="row"><span>J1 [°]</span><input type="range" id="j1t" min="0" max="180" step="1" value="0"><span id="j1t_v"></span></div>
+    <div class="row"><span>J2 [°]</span><input type="range" id="j2t" min="-90" max="90" step="1" value="0"><span id="j2t_v"></span></div>
+    <div class="sub">Servo range 0–180°: J1 = θ1, J2 = 90 + θ2. Right-drag on the canvas also works (via IK).</div>
+  </fieldset>
+
+  <fieldset id="ikTargets">
+    <legend>IK target</legend>
+    <div class="row2">
+      x <input type="number" id="xt" step="0.005">
+      y <input type="number" id="yt" step="0.005"> m
+    </div>
+    <div class="sub"><b>Right-drag</b> on the canvas to move the red target</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Joint PID</legend>
+    <div class="sub">Kp [mNm/°] · Ki [mNm/(°·s)] · Kd [mNm·s/°] → motor torque</div>
+    <div class="gains">
+      <div>
+        <b>J1</b>
+        <div class="row"><span>Kp</span><input type="range" id="j1kp" min="0" max="50" step="0.5" value="10"><span id="j1kp_v"></span></div>
+        <div class="row"><span>Ki</span><input type="range" id="j1ki" min="0" max="200" step="1" value="0"><span id="j1ki_v"></span></div>
+        <div class="row"><span>Kd</span><input type="range" id="j1kd" min="0" max="3" step="0.02" value="0.5"><span id="j1kd_v"></span></div>
+      </div>
+      <div>
+        <b>J2</b>
+        <div class="row"><span>Kp</span><input type="range" id="j2kp" min="0" max="50" step="0.5" value="10"><span id="j2kp_v"></span></div>
+        <div class="row"><span>Ki</span><input type="range" id="j2ki" min="0" max="200" step="1" value="0"><span id="j2ki_v"></span></div>
+        <div class="row"><span>Kd</span><input type="range" id="j2kd" min="0" max="3" step="0.02" value="0.5"><span id="j2kd_v"></span></div>
+      </div>
+    </div>
+    <div class="row2"><button id="btnReset">Reset integrators</button></div>
+  </fieldset>
+
+  <fieldset id="impParams">
+    <legend>Impedance / Admittance</legend>
+    <div class="row"><span>Kx [N/m]</span><input type="range" id="Kx" min="0" max="1500" step="10" value="300"><span id="Kx_v"></span></div>
+    <div class="row"><span>Ky [N/m]</span><input type="range" id="Ky" min="0" max="1500" step="10" value="300"><span id="Ky_v"></span></div>
+    <div class="row"><span>B [N·s/m]</span><input type="range" id="B" min="0" max="40" step="0.5" value="10"><span id="B_v"></span></div>
+    <div class="row"><span>M [kg]</span><input type="range" id="M" min="0.02" max="1" step="0.01" value="0.1"><span id="M_v"></span></div>
+    <div class="sub">Set Kx ≠ Ky for direction-dependent stiffness (green ellipse)</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Environment / Test</legend>
+    <div class="row2">
+      <label><input type="checkbox" id="gravity"> Gravity (vertical plane)</label>
+    </div>
+    <div class="row"><span>Payload [g]</span><input type="range" id="payload" min="0" max="200" step="5" value="0"><span id="payload_v"></span></div>
+    <div class="row"><span>Noise [°]</span><input type="range" id="noise" min="0" max="0.5" step="0.01" value="0"><span id="noise_v"></span></div>
+    <div class="row"><span>D filt [Hz]</span><input type="range" id="dcut" min="2" max="200" step="1" value="50"><span id="dcut_v"></span></div>
+    <div class="row2">
+      <button id="btnStep">Step test</button>
+      <button id="btnKick">Kick (2 N)</button>
+      <button id="btnCenter">Center</button>
+    </div>
+    <div class="sub">Shift + drag on the canvas to pull the tip yourself</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>View</legend>
+    <div class="row2">
+      <label><input type="checkbox" id="showEllipse" checked> Stiffness ellipse</label>
+      <label><input type="checkbox" id="showTrail" checked> Trail</label>
+      <label><input type="checkbox" id="showGhost" checked> Target pose</label>
+      <label><input type="checkbox" id="shading" checked> Shading</label>
+      <label><input type="checkbox" id="panToggle"> PAN</label>
+    </div>
+    <div class="sub mono" id="infoAngles"></div>
+    <div class="sub mono">EE <span id="infoEE"></span></div>
+  </fieldset>
+</aside>
+<main id="sketch-holder"><canvas id="hud"></canvas></main>
+<script src="serial.js"></script>
+<script src="sketch.js"></script>
+</body>
+</html>
